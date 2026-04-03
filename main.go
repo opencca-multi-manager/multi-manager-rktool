@@ -11,6 +11,7 @@ Board commands:
   uart              launch minicom on the board's serial port
   power <action>    on | off | reboot | cycle  (via smartplug)
   maskrom           put board into maskrom mode
+  gpio-reset        reset the GPIO controller
   list              show boards and their user assignments
 
 All other commands are forwarded to rkdeveloptool.
@@ -45,6 +46,9 @@ func main() {
 	case "help":
 		fmt.Print(usage)
 		runPassthrough(cfg.Binaries.Rkdeveloptool)
+		return
+	case "gpio-reset":
+		cmdGpioReset(cfg)
 		return
 	}
 

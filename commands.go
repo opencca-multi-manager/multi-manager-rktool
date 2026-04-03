@@ -100,7 +100,35 @@ func cmdMaskrom(cfg *Config, b *Board) {
 	waitMaskrom(cfg, b)
 }
 
-// esp32Pin sends a "hi <pin>\n" or "lo <pin>\n" command to an ESP32 over UART.
+func cmdGpioReset(cfg *Config) {
+	if cfg.MaskromTTY == "" {
+		fatalf("maskrom_tty not configured")
+	}
+	if err := esp32Reset(cfg.MaskromTTY); err != nil {
+		fatalf("gpio-reset: %v", err)
+	}
+}
+
+// esp32Reset resets the ESP32 by toggling RTS. Needed after power cycle
+func esp32Reset(tty string) error {
+	port, err := serial.Open(tty, &serial.Mode{BaudRate: 115200})
+	if err != nil {
+		return fmt.Errorf("open %s: %w", tty, err)
+	}
+	defer port.Close()
+
+	if err := port.SetDTR(false); err != nil {
+		return err
+	}
+	if err := port.SetRTS(true); err != nil {
+		return err
+	}
+	time.Sleep(100 * time.Millisecond)
+	return port.SetRTS(false)
+}
+
+// esp32Pin sends a "SET <pin> HIGH\n" or "SET <pin> LOW\n" command to an ESP32,
+// then reads and checks the response.
 func esp32Pin(tty, pin string, high bool) error {
 	port, err := serial.Open(tty, &serial.Mode{BaudRate: 115200})
 	if err != nil {
@@ -108,12 +136,43 @@ func esp32Pin(tty, pin string, high bool) error {
 	}
 	defer port.Close()
 
-	cmd := "lo"
-	if high {
-		cmd = "hi"
+	if err = port.ResetInputBuffer(); err != nil {
+		return fmt.Errorf("flush input: %w", err)
 	}
-	_, err = fmt.Fprintf(port, "%s %s\n", cmd, pin)
-	return err
+
+	level := "LOW"
+	if high {
+		level = "HIGH"
+	}
+	if _, err = fmt.Fprintf(port, "SET %s %s\n", pin, level); err != nil {
+		return err
+	}
+
+	if err = port.SetReadTimeout(500 * time.Millisecond); err != nil {
+		return fmt.Errorf("set read timeout: %w", err)
+	}
+	var resp []byte
+	buf := make([]byte, 1)
+	for {
+		n, err := port.Read(buf)
+		if n > 0 {
+			resp = append(resp, buf[:n]...)
+			if buf[0] == '\n' {
+				break
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	line := strings.TrimSpace(string(resp))
+	if strings.HasPrefix(line, "ERR:") {
+		return fmt.Errorf("esp32: %s", line)
+	}
+	if !strings.HasPrefix(line, "OK") {
+		return fmt.Errorf("esp32: unexpected response: %q", line)
+	}
+	return nil
 }
 
 func isMaskrom(cfg *Config, b *Board) bool {
