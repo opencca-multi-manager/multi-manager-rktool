@@ -1,0 +1,3 @@
+# Allow any user to invoke the opencca manager with group opencca-admin without a password.
+# The manager enforces per-user board access internally.
+ALL ALL = (ALL : opencca-admin) NOPASSWD: /usr/local/sbin/rktool-manager

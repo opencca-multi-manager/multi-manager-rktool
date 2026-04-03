@@ -1,0 +1,40 @@
+admin_group: opencca-admin
+maskrom_tty: /dev/ttyACM0
+
+binaries:
+  minicom: /usr/bin/minicom
+  uhubctl: /usr/sbin/uhubctl
+  rkdeveloptool: /usr/local/bin/rkdeveloptool
+
+boards:
+  - name: board-1
+    type: rock5b
+    tty: /dev/ttyUSB0
+    dev_location: "0x281414"
+    smartplug: "http://192.168.1.50"
+    # smartplug_user: admin
+    # smartplug_pass: secret
+    uhubctl_id: "1-1.2"
+    maskrom_pin: "4"
+
+  - name: board-2
+    type: rock5b+
+    tty: /dev/ttyUSB1
+    dev_location: "0x281414"
+    smartplug: "http://192.168.1.51"
+    uhubctl_id: "1-1.3"
+    maskrom_pin: "5"
+
+  - name: board-3
+    type: orangepi
+    tty: /dev/ttyUSB2
+    dev_location: "0x350a"
+    smartplug: "http://192.168.1.52"
+    uhubctl_id: "1-1.4"
+    maskrom_pin: "6"
+
+assignments:
+  # user: board-name
+  b: board-1
+  # bob:   rock5bplus-1
+  # carol: opi5-1

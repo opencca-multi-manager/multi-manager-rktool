@@ -1,0 +1,10 @@
+# Rockchip RK3588 maskrom/loader USB devices — restricted to opencca-admin group
+SUBSYSTEM!="usb", GOTO="end_rockusb"
+
+# RK3588 / RK3588S
+ATTRS{idVendor}=="2207", ATTRS{idProduct}=="350b", MODE="0660", GROUP="opencca-admin"
+
+LABEL="end_rockusb"
+
+# USB serial adapters (board TTYs) — restricted to opencca-admin group
+KERNEL=="ttyUSB*", MODE="0660", GROUP="opencca-admin"
