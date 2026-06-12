@@ -11,14 +11,20 @@ Board commands:
   uart              launch minicom on the board's serial port
   power <action>    on | off | reboot | cycle  (via smartplug)
   maskrom           put board into maskrom mode
-  gpio-reset        reset the GPIO controller
   list              show boards and their user assignments
+
+Debug commands:
+  gpio-reset                  reset the GPIO controller
+  gpio-pin <pin> <high|low>   set an ESP32 GPIO pin high or low
+  smartplug <on|off>          control the smartplug directly
+  uhubctl <on|off>            control the USB hub directly
 
 All other commands are forwarded to rkdeveloptool.
 
 Flags:
-  --board NAME      select board by name (default: user's assigned board)
-  --verbose / -v    print all commands before executing them
+  --board NAME       select board by name (default: user's assigned board)
+  --log-file / -l    minicom log file path (default: minicom.txt in current directory)
+  --verbose / -v     print all commands before executing them
 `
 
 var verbose bool
@@ -31,7 +37,11 @@ func main() {
 
 	args := os.Args[1:]
 	boardFlag, args := extractFlag(args, "--board", "-b")
+	logFile, args := extractFlag(args, "--log-file", "-l")
 	verbose, args = extractBoolFlag(args, "--verbose", "-v")
+	if os.Getenv("RKTOOL_DEBUG") != "" {
+		verbose = true
+	}
 
 	if len(args) == 0 {
 		fmt.Print(usage)
@@ -50,6 +60,17 @@ func main() {
 	case "gpio-reset":
 		cmdGpioReset(cfg)
 		return
+	case "gpio-pin":
+		if len(args) < 3 {
+			fatalf("usage: gpio-pin <pin> <high|low>")
+		}
+		if cfg.MaskromTTY == "" {
+			fatalf("maskrom_tty not configured")
+		}
+		if err := esp32Pin(cfg.MaskromTTY, args[1], args[2] == "high"); err != nil {
+			fatalf("gpio-pin: %v", err)
+		}
+		return
 	}
 
 	board, err := resolveBoard(cfg, boardFlag)
@@ -65,18 +86,26 @@ func main() {
 
 	switch cmd {
 	case "uart":
-		cmdUart(cfg, board)
+		cmdUart(cfg, board, logFile)
 	case "power":
 		cmdPower(cfg, board, rest)
 	case "maskrom":
 		cmdMaskrom(cfg, board)
+	case "smartplug":
+		if len(rest) == 0 {
+			fatalf("usage: smartplug <on|off>")
+		}
+		smartplugSet(board, rest[0] == "on")
+	case "uhubctl":
+		if len(rest) == 0 {
+			fatalf("usage: uhubctl <on|off>")
+		}
+		uhubctlSet(cfg, board, rest[0] == "on")
 	default:
 		cmdRkdeveloptool(cfg, board, args)
 	}
 }
 
-// extractFlag removes a named flag and its value from args.
-// Supports "--flag value" and "--flag=value".
 func extractFlag(args []string, names ...string) (string, []string) {
 	for i, a := range args {
 		for _, name := range names {

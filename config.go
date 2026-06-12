@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,15 +19,19 @@ const (
 )
 
 type Board struct {
-	Name            string    `yaml:"name"`
-	Type            BoardType `yaml:"type"`
-	TTY             string    `yaml:"tty"`
-	DevLocation     string    `yaml:"dev_location"`
-	SmartPlug       string    `yaml:"smartplug"`
-	SmartPlugUser   string    `yaml:"smartplug_user,omitempty"`
-	SmartPlugPass   string    `yaml:"smartplug_pass,omitempty"`
-	UhubctlID       string    `yaml:"uhubctl_id"`
-	MaskromPin      string    `yaml:"maskrom_pin,omitempty"`
+	Name                string        `yaml:"name"`
+	Type                BoardType     `yaml:"type"`
+	TTY                 string        `yaml:"tty"`
+	DevLocation         string        `yaml:"dev_location"`
+	SmartPlug           string        `yaml:"smartplug"`
+	SmartPlugUser       string        `yaml:"smartplug_user,omitempty"`
+	SmartPlugPass       string        `yaml:"smartplug_pass,omitempty"`
+	UhubctlID           string        `yaml:"uhubctl_id,omitempty"`
+	UhubctlPort         string        `yaml:"uhubctl_port,omitempty"`
+	MaskromPin          string        `yaml:"maskrom_pin,omitempty"`
+	PowerOffDelay       time.Duration `yaml:"power_off_delay,omitempty"`
+	MaskromReleaseDelay time.Duration `yaml:"maskrom_release_delay,omitempty"`
+	MaskromStableFor    time.Duration `yaml:"maskrom_stable_for,omitempty"`
 }
 
 type Binaries struct {
@@ -35,11 +41,11 @@ type Binaries struct {
 }
 
 type Config struct {
-	AdminGroup  string            `yaml:"admin_group"`
-	MaskromTTY  string            `yaml:"maskrom_tty,omitempty"`
-	Binaries    Binaries          `yaml:"binaries"`
-	Boards      []Board           `yaml:"boards"`
-	Assignments map[string]string `yaml:"assignments"` // linux user -> board name
+	AdminGroup  string              `yaml:"admin_group"`
+	MaskromTTY  string              `yaml:"maskrom_tty,omitempty"`
+	Binaries    Binaries            `yaml:"binaries"`
+	Boards      []Board             `yaml:"boards"`
+	Assignments map[string][]string `yaml:"assignments"` // linux user -> board names
 }
 
 var configPaths = []string{
@@ -81,12 +87,20 @@ func loadConfig() (*Config, error) {
 
 func (cfg *Config) validate() error {
 	boardNames := make(map[string]bool, len(cfg.Boards))
-	for _, b := range cfg.Boards {
-		boardNames[b.Name] = true
+	for i := range cfg.Boards {
+		boardNames[cfg.Boards[i].Name] = true
+		if cfg.Boards[i].PowerOffDelay == 0 {
+			cfg.Boards[i].PowerOffDelay = 2 * time.Second
+		}
+		if cfg.Boards[i].MaskromReleaseDelay == 0 {
+			cfg.Boards[i].MaskromReleaseDelay = 3 * time.Second
+		}
 	}
-	for user, board := range cfg.Assignments {
-		if !boardNames[board] {
-			return fmt.Errorf("assignment for user %q references unknown board %q", user, board)
+	for u, boards := range cfg.Assignments {
+		for _, board := range boards {
+			if !boardNames[board] {
+				return fmt.Errorf("assignment for user %q references unknown board %q", u, board)
+			}
 		}
 	}
 	return nil
@@ -108,8 +122,13 @@ func resolveBoard(cfg *Config, boardFlag string) (*Board, error) {
 
 	u, err := currentUser()
 	if err == nil {
-		if name, ok := cfg.Assignments[u]; ok {
-			return cfg.boardByName(name)
+		if boards, ok := cfg.Assignments[u]; ok {
+			if len(boards) == 1 {
+				return cfg.boardByName(boards[0])
+			}
+			if len(boards) > 1 {
+				return nil, fmt.Errorf("user %q has multiple boards assigned, use --board NAME (%s)", u, strings.Join(boards, ", "))
+			}
 		}
 	}
 
@@ -117,20 +136,26 @@ func resolveBoard(cfg *Config, boardFlag string) (*Board, error) {
 }
 
 func checkAccess(cfg *Config, b *Board) error {
-	u, err := currentUser()
+	u, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("cannot determine current user: %w", err)
+	}
+
+	if u.Uid == "0" {
+		return nil
 	}
 
 	if isGroupMember(cfg.AdminGroup) {
 		return nil
 	}
 
-	if assigned, ok := cfg.Assignments[u]; ok && assigned == b.Name {
-		return nil
+	for _, name := range cfg.Assignments[u.Username] {
+		if name == b.Name {
+			return nil
+		}
 	}
 
-	return fmt.Errorf("user %q is not allowed to access board %q", u, b.Name)
+	return fmt.Errorf("user %q is not allowed to access board %q", u.Username, b.Name)
 }
 
 func currentUser() (string, error) {

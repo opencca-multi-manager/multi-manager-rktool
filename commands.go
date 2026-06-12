@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -13,30 +15,71 @@ import (
 	"go.bug.st/serial"
 )
 
-func cmdUart(cfg *Config, b *Board) {
+func cmdUart(cfg *Config, b *Board, logFile string) {
+	kickTTYLock(b.TTY)
+	if logFile == "" {
+		logFile = "minicom.txt"
+	}
 	bin := cfg.Binaries.Minicom
-	args := []string{bin, "-w", "-t", "xterm", "-l", "-R", "UTF-8", "-D", b.TTY, "-C", "minicom.txt", b.Name}
+	args := []string{bin, "-w", "-t", "xterm", "-l", "-R", "UTF-8", "-b", "1500000", "-D", b.TTY, "-C", logFile, b.Name}
 	logf("%s", strings.Join(args, " "))
 	if err := syscall.Exec(bin, args, os.Environ()); err != nil {
 		fatalf("exec minicom: %v", err)
 	}
 }
 
+func kickTTYLock(tty string) {
+	lockFile := "/var/lock/LCK.." + filepath.Base(tty)
+	data, err := os.ReadFile(lockFile)
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err == nil && pid > 0 {
+		if p, err := os.FindProcess(pid); err == nil {
+			fmt.Printf("kicking existing connection (pid %d)...\n", pid)
+			p.Signal(syscall.SIGHUP)
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	os.Remove(lockFile)
+}
+
 func cmdList(cfg *Config) {
 	boardUsers := make(map[string][]string)
-	for user, board := range cfg.Assignments {
-		boardUsers[board] = append(boardUsers[board], user)
+	for user, boards := range cfg.Assignments {
+		for _, board := range boards {
+			boardUsers[board] = append(boardUsers[board], user)
+		}
 	}
 
-	fmt.Printf("%-20s %-12s %s\n", "NAME", "TYPE", "ASSIGNED TO")
-	fmt.Printf("%-20s %-12s %s\n", "----", "----", "-----------")
+	fmt.Printf("%-12s %-10s %-16s %-14s %-12s %-24s %-6s %s\n",
+		"NAME", "TYPE", "DEV_LOCATION", "TTY", "UHUBCTL", "SMARTPLUG", "PIN", "ASSIGNED TO")
+	fmt.Printf("%-12s %-10s %-16s %-14s %-12s %-24s %-6s %s\n",
+		"----", "----", "------------", "---", "-------", "---------", "---", "-----------")
 	for _, b := range cfg.Boards {
 		users := boardUsers[b.Name]
 		assigned := strings.Join(users, ", ")
 		if assigned == "" {
 			assigned = "-"
 		}
-		fmt.Printf("%-20s %-12s %s\n", b.Name, b.Type, assigned)
+		uhubctl := b.UhubctlID
+		if b.UhubctlPort != "" {
+			uhubctl += ":" + b.UhubctlPort
+		}
+		if uhubctl == "" {
+			uhubctl = "-"
+		}
+		smartplug := b.SmartPlug
+		if smartplug == "" {
+			smartplug = "-"
+		}
+		pin := b.MaskromPin
+		if pin == "" {
+			pin = "-"
+		}
+		fmt.Printf("%-12s %-10s %-16s %-14s %-12s %-24s %-6s %s\n",
+			b.Name, b.Type, b.DevLocation, b.TTY, uhubctl, smartplug, pin, assigned)
 	}
 }
 
@@ -54,13 +97,15 @@ func cmdPower(cfg *Config, b *Board, args []string) {
 	case "reboot":
 		uhubctlSet(cfg, b, false)
 		smartplugSet(b, false)
-		time.Sleep(2 * time.Second)
+		fmt.Printf("waiting %s for power off...\n", b.PowerOffDelay)
+		time.Sleep(b.PowerOffDelay)
 		smartplugSet(b, true)
 		uhubctlSet(cfg, b, true)
 	case "cycle":
 		uhubctlSet(cfg, b, false)
 		smartplugSet(b, false)
-		time.Sleep(5 * time.Second)
+		fmt.Printf("waiting %s for power off...\n", b.PowerOffDelay)
+		time.Sleep(b.PowerOffDelay)
 		smartplugSet(b, true)
 		uhubctlSet(cfg, b, true)
 	default:
@@ -79,9 +124,11 @@ func cmdMaskrom(cfg *Config, b *Board) {
 	fmt.Println("powering off board...")
 	uhubctlSet(cfg, b, false)
 	smartplugSet(b, false)
-	time.Sleep(2 * time.Second)
+	fmt.Printf("waiting %s for power off...\n", b.PowerOffDelay)
+	time.Sleep(b.PowerOffDelay)
 
 	fmt.Printf("asserting maskrom pin %s high via ESP32...\n", b.MaskromPin)
+	logf("echo 'SET %s HIGH' > %s", b.MaskromPin, cfg.MaskromTTY)
 	if err := esp32Pin(cfg.MaskromTTY, b.MaskromPin, true); err != nil {
 		fatalf("esp32: %v", err)
 	}
@@ -90,9 +137,24 @@ func cmdMaskrom(cfg *Config, b *Board) {
 	fmt.Println("powering on board...")
 	smartplugSet(b, true)
 	uhubctlSet(cfg, b, true)
-	time.Sleep(500 * time.Millisecond)
+
+	if b.MaskromStableFor > 0 {
+		fmt.Printf("holding maskrom pin until stable for %s...\n", b.MaskromStableFor)
+		waitMaskromStable(cfg, b, b.MaskromStableFor)
+
+		fmt.Printf("releasing maskrom pin %s via ESP32...\n", b.MaskromPin)
+		logf("echo 'SET %s LOW' > %s", b.MaskromPin, cfg.MaskromTTY)
+		if err := esp32Pin(cfg.MaskromTTY, b.MaskromPin, false); err != nil {
+			fatalf("esp32: %v", err)
+		}
+		return
+	}
+
+	fmt.Printf("waiting %s before releasing maskrom pin...\n", b.MaskromReleaseDelay)
+	time.Sleep(b.MaskromReleaseDelay)
 
 	fmt.Printf("releasing maskrom pin %s via ESP32...\n", b.MaskromPin)
+	logf("echo 'SET %s LOW' > %s", b.MaskromPin, cfg.MaskromTTY)
 	if err := esp32Pin(cfg.MaskromTTY, b.MaskromPin, false); err != nil {
 		fatalf("esp32: %v", err)
 	}
@@ -109,7 +171,7 @@ func cmdGpioReset(cfg *Config) {
 	}
 }
 
-// esp32Reset resets the ESP32 by toggling RTS. Needed after power cycle
+// Needed after power cycle
 func esp32Reset(tty string) error {
 	port, err := serial.Open(tty, &serial.Mode{BaudRate: 115200})
 	if err != nil {
@@ -127,8 +189,6 @@ func esp32Reset(tty string) error {
 	return port.SetRTS(false)
 }
 
-// esp32Pin sends a "SET <pin> HIGH\n" or "SET <pin> LOW\n" command to an ESP32,
-// then reads and checks the response.
 func esp32Pin(tty, pin string, high bool) error {
 	port, err := serial.Open(tty, &serial.Mode{BaudRate: 115200})
 	if err != nil {
@@ -182,7 +242,13 @@ func isMaskrom(cfg *Config, b *Board) bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(out), "Maskrom")
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "LocationID="+b.DevLocation) &&
+			strings.Contains(line, "Maskrom") {
+			return true
+		}
+	}
+	return false
 }
 
 func waitMaskrom(cfg *Config, b *Board) {
@@ -201,6 +267,38 @@ func waitMaskrom(cfg *Config, b *Board) {
 	}
 	fmt.Println()
 	fatalf("timed out waiting for maskrom device")
+}
+
+func waitMaskromStable(cfg *Config, b *Board, stableFor time.Duration) {
+	const retryInterval = 250 * time.Millisecond
+	const timeout = 60 * time.Second
+	start := time.Now()
+	deadline := start.Add(timeout)
+	var stableSince time.Time
+	for time.Now().Before(deadline) {
+		if isMaskrom(cfg, b) {
+			if stableSince.IsZero() {
+				stableSince = time.Now()
+			}
+			held := time.Since(stableSince)
+			fmt.Printf("\rmaskrom present, stable %s/%s   ",
+				held.Round(100*time.Millisecond), stableFor)
+			if held >= stableFor {
+				fmt.Println("\ndevice is stably in maskrom mode")
+				return
+			}
+		} else {
+			if !stableSince.IsZero() {
+				fmt.Print("\rmaskrom dropped, restarting stability timer\n")
+			}
+			stableSince = time.Time{}
+			fmt.Printf("\rwaiting for maskrom device... %s   ",
+				time.Since(start).Round(time.Second))
+		}
+		time.Sleep(retryInterval)
+	}
+	fmt.Println()
+	fatalf("timed out waiting for stable maskrom device")
 }
 
 func rkEnv(loc string) []string {
@@ -237,7 +335,12 @@ func uhubctlSet(cfg *Config, b *Board, on bool) {
 	if on {
 		action = "on"
 	}
-	runSilent(cfg.Binaries.Uhubctl, "-l", b.UhubctlID, "-a", action)
+	args := []string{"-l", b.UhubctlID}
+	if b.UhubctlPort != "" {
+		args = append(args, "-p", b.UhubctlPort)
+	}
+	args = append(args, "-a", action)
+	runSilent(cfg.Binaries.Uhubctl, args...)
 }
 
 func smartplugSet(b *Board, on bool) {
@@ -250,6 +353,7 @@ func smartplugSet(b *Board, on bool) {
 		state = "on"
 	}
 	url := fmt.Sprintf("%s/cm?cmnd=Power%%20%s", b.SmartPlug, state)
+	logf("curl %q", url)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		fatalf("smartplug %s: %v", state, err)
