@@ -14,8 +14,9 @@ boards:
     smartplug: "http://192.168.1.50"
     # smartplug_user: admin
     # smartplug_pass: secret
-    uhubctl_id: "1-1.2"
+    uhubctl_id: "1-1.2" # optional: omit to disable USB power cycling
     maskrom_pin: "4"
+    maskrom_stable_for: 3s # hold pin until maskrom is stable
 
   - name: board-2
     type: rock5b+
@@ -30,11 +31,14 @@ boards:
     tty: /dev/ttyUSB2
     dev_location: "0x350a"
     smartplug: "http://192.168.1.52"
-    uhubctl_id: "1-1.4"
+    # uhubctl_id not set — USB power cycling disabled for this board
     maskrom_pin: "6"
 
 assignments:
-  # user: board-name
-  b: board-1
-  # bob:   rock5bplus-1
-  # carol: opi5-1
+  # user:
+  #   - board-name
+  b:
+    - board-1
+  # bob:
+  #   - board-1
+  #   - board-2
