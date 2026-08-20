@@ -29,6 +29,7 @@ For several rockchip development boards.
 - Requires the opencca manager node (hardware assembly)
 - Requires a patched `rkdeveloptool` that presents a more granular `DEVLOCATION` for board selection ([`multi-manager-rkdeveloptool`](https://github.com/opencca-multi-manager/multi-manager-rkdeveloptool))
 - Requires a [esp32 GPIO controller](https://github.com/opencca-multi-manager/multi-manager-esp32-gpio-controller) to put RK3588 into maskrom mode.
+- [See full list of hardware](https://docs.google.com/spreadsheets/d/1AQdgmMk4y2QL_hDuCSrXrHo1rdy2n0IFNvnw1MDFr7w/edit?usp=sharing)
 
 ---
 
