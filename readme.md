@@ -1,19 +1,22 @@
 # rktool
 
-Multi-user wrapper around `rkdeveloptool`. It provides safe shared access to embedded development boards (Rock 5B, Rock 5B+, Orange Pi 5) for multiple users on the same machine.
+Multi-user wrapper around `rkdeveloptool`.
+It provides safe shared access to embedded development boards (Rock 5B, Rock 5B+, Orange Pi 5) for multiple users on the same machine.
 
-<p>
-  <a href="./pictures/setup1.jpg"><img src="./pictures/setup1.jpg" height="400px" /></a>
-</p>
-
-
-This setup provides:
+This setup includes:
 
 - Serial access,
 - Power management (Reboot, On, Off),
 - Firmware flashing (Maskrom mode),
 
 For several rockchip development boards.
+
+<table style="max-width: 900px;">
+  <tr>
+    <td valign="middle"><a href="./pictures/setup1.jpg"><img src="./pictures/setup1.jpg"></a></td>
+    <td valign="middle"><a href="./pictures/setup2.jpg"><img src="./pictures/setup2.jpg"></a></td>
+  </tr>
+</table>
 
 
 > [!NOTE]
@@ -23,7 +26,7 @@ For several rockchip development boards.
 ## Dependencies
 
 - Requires the opencca manager node (hardware assembly)
-- Requires a patched `rkdeveloptool` that presents a more granular `DEVLOCATION` for board selection ([`opencca-manager-rkdeveloptool`](https://github.com/opencca-multi-manager/multi-manager-rkdeveloptool))
+- Requires a patched `rkdeveloptool` that presents a more granular `DEVLOCATION` for board selection ([`multi-manager-rkdeveloptool`](https://github.com/opencca-multi-manager/multi-manager-rkdeveloptool))
 - Requires a [esp32 GPIO controller](https://github.com/opencca-multi-manager/multi-manager-esp32-gpio-controller) to put RK3588 into maskrom mode.
 
 ---
