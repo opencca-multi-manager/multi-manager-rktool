@@ -9,7 +9,7 @@ Multi-user wrapper around `rkdeveloptool` for the opencca manager node. It provi
 ## Dependencies
 
 - Requires the opencca manager node
-- Requires a patched `rkdeveloptool` that supports `DEVLOCATION` for board selection (`opencca-manager-rkdeveloptool`)
+- Requires a patched `rkdeveloptool` that presents a more granular `DEVLOCATION` for board selection ([`opencca-manager-rkdeveloptool`](https://github.com/opencca-multi-manager/multi-manager-rkdeveloptool))
 
 ---
 
