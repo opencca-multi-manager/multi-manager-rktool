@@ -22,7 +22,7 @@ For several rockchip development boards.
 > [!NOTE]
 > Collection of scripts and tools provided as-is as a starting point. Not plug-and-play.
   
-3D case: [ROck 5B 5-node cluster](https://www.printables.com/model/330063-rock-5b-5-node-cluster).
+3D case: [Rock 5B 5-node cluster](https://www.printables.com/model/330063-rock-5b-5-node-cluster).
 
 ## Dependencies
 
