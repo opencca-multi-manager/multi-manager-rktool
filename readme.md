@@ -1,15 +1,30 @@
 # rktool
 
-Multi-user wrapper around `rkdeveloptool` for the opencca manager node. It provides safe shared access to embedded development boards (Rock 5B, Rock 5B+, Orange Pi 5) for multiple users on the same machine.
+Multi-user wrapper around `rkdeveloptool`. It provides safe shared access to embedded development boards (Rock 5B, Rock 5B+, Orange Pi 5) for multiple users on the same machine.
 
-**Access model:** The `opencca-admin` group owns all hardware devices. The `rktool` binary is a shell wrapper that calls `sudo -g opencca-admin rktool-manager`, so any user can run `rktool` without a password while the manager enforces per-user board assignments internally.
+<p>
+  <a href="./pictures/setup1.jpg"><img src="./pictures/setup1.jpg" height="400px" /></a>
+</p>
 
----
+
+This setup provides:
+
+- Serial access,
+- Power management (Reboot, On, Off),
+- Firmware flashing (Maskrom mode),
+
+For several rockchip development boards.
+
+
+> [!NOTE]
+> Collection of scripts and tools provided as-is as a starting point. Not plug-and-play.
+
 
 ## Dependencies
 
-- Requires the opencca manager node
+- Requires the opencca manager node (hardware assembly)
 - Requires a patched `rkdeveloptool` that presents a more granular `DEVLOCATION` for board selection ([`opencca-manager-rkdeveloptool`](https://github.com/opencca-multi-manager/multi-manager-rkdeveloptool))
+- Requires a [esp32 GPIO controller](https://github.com/opencca-multi-manager/multi-manager-esp32-gpio-controller) to put RK3588 into maskrom mode.
 
 ---
 
@@ -28,7 +43,6 @@ To uninstall:
 sudo make uninstall
 ```
 
----
 
 ## Usage
 
@@ -128,6 +142,9 @@ assignments:
     - board-1
     - board-2
 ```
+
+
+**Access model:** The `opencca-admin` group owns all hardware devices. The `rktool` binary is a shell wrapper that calls `sudo -g opencca-admin rktool-manager`, so any user can run `rktool` without a password while the manager enforces per-user board assignments internally.
 
 ---
 
